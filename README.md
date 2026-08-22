@@ -1,21 +1,18 @@
-# Danish Khan PairCode v2 — Render
+# Danish Khan WhatsApp PairCode v3
 
-Files:
-- package.json
-- server.js
-
-Render:
-- Runtime: Node
+## Render
 - Root Directory: blank
-- Build Command: npm install
-- Start Command: npm start
+- Build Command: `npm install`
+- Start Command: `npm start`
+- Environment: Node 20+
 
-This version avoids the previous public/index.html path problem: the UI is served directly by server.js.
+## Files
+- `package.json`
+- `server.js`
+- `README.md`
 
-The pairing implementation follows the documented Baileys pairing-code flow, uses a cacheable signal key store, a canonical desktop browser profile, waits briefly for the socket on cloud hosts, and creates a fresh session for each new pairing attempt.
+The app serves the UI directly from `server.js`. No `public` folder is required.
 
-Important:
-- No implementation can honestly guarantee 100% acceptance by WhatsApp. WhatsApp can reject pairing and Baileys can encounter protocol errors.
-- Pairing code must be entered promptly and the number must include country code, digits only.
-- creds.json and session keys are sensitive authentication material. Do not upload them to GitHub or share them.
-- Render free instances have ephemeral local storage; if the service restarts/redeploys, local session files can be lost unless persistent storage is used.
+This version uses Baileys 7.0.0-rc13, a canonical Chrome/macOS browser profile, waits for the pairing-ready QR handshake before requesting the code, and attempts to resolve the live WhatsApp Web client revision. A `sessions/<number>/creds.json` file is saved after successful linking.
+
+Only use it with a WhatsApp account you own. WhatsApp can still reject a pairing request for server-side, rate-limit, account, network, or protocol reasons; no third-party script can guarantee acceptance.
