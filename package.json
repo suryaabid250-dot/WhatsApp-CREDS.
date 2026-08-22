@@ -1,6 +1,6 @@
 {
-  "name": "danish-khan-knightbase-paircode",
-  "version": "1.0.0",
+  "name": "danish-khan-wa-paircode-fixed",
+  "version": "4.0.0",
   "private": true,
   "main": "server.js",
   "scripts": {
