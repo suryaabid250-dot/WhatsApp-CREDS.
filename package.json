@@ -1,16 +1,18 @@
 {
-  "name": "danish-khan-paircode-v3",
+  "name": "danish-khan-wa-linker-final",
   "version": "3.0.0",
   "private": true,
-  "description": "Render-ready WhatsApp pairing-code web app",
-  "type": "module",
   "main": "server.js",
-  "scripts": { "start": "node server.js" },
-  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
-    "@whiskeysockets/baileys": "7.0.0-rc13",
-    "@hapi/boom": "10.0.1",
+    "@whiskeysockets/baileys": "github:WhiskeySockets/Baileys#master",
     "express": "4.21.2",
-    "pino": "9.6.0"
+    "pino": "9.6.0",
+    "qrcode": "1.5.4"
   }
 }
