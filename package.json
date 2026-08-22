@@ -1,6 +1,6 @@
 {
-  "name": "danish-khan-wa-linker-final",
-  "version": "3.0.0",
+  "name": "danish-khan-knightbase-paircode",
+  "version": "1.0.0",
   "private": true,
   "main": "server.js",
   "scripts": {
@@ -10,9 +10,8 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "github:WhiskeySockets/Baileys#master",
+    "@whiskeysockets/baileys": "7.0.0-rc.9",
     "express": "4.21.2",
-    "pino": "9.6.0",
-    "qrcode": "1.5.4"
+    "pino": "9.6.0"
   }
 }
