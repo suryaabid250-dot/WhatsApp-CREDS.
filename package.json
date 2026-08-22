@@ -1,14 +1,18 @@
 {
-  "name": "danish-khan-whatsapp-linker",
-  "version": "1.1.0",
+  "name": "danish-khan-whatsapp-paircode",
+  "version": "2.0.0",
   "private": true,
-  "type": "module",
-  "description": "Danish Khan WhatsApp pairing-code web app using Baileys.",
-  "scripts": { "start": "node server.js" },
-  "engines": { "node": ">=20" },
+  "description": "Danish Khan WhatsApp Pair Code Generator",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
-    "@whiskeysockets/baileys": "latest",
-    "express": "^5.1.0",
-    "pino": "^10.1.0"
+    "@whiskeysockets/baileys": "6.7.24",
+    "express": "4.21.2",
+    "pino": "9.6.0"
   }
 }
