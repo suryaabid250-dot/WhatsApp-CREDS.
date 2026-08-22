@@ -1,1 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07111f">
+  <title>Danish Khan • WA Core</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="bg-grid"></div><div class="orb orb-a"></div><div class="orb orb-b"></div>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">DK</span><span><b>DANISH KHAN</b><small>WA CORE • PAIRING CENTER</small></span></div>
+    <button id="refresh" class="icon-btn" title="Refresh status">↻</button>
+  </header>
 
+  <main class="shell">
+    <section class="hero">
+      <div class="eyebrow"><span class="pulse"></span> SECURE SESSION CONTROL</div>
+      <h1>WhatsApp <span>Pairing</span> Core</h1>
+      <p>Generate a WhatsApp pairing code, link your device, and keep the session safely on your server.</p>
+      <div class="chips"><span>ALL COUNTRY NUMBERS</span><span>PAIR CODE</span><span>SESSION READY</span></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><div><span class="mini-label">STEP 01</span><h2>Connect Number</h2></div><div id="statusDot" class="status-dot idle"></div></div>
+      <label for="phone">WhatsApp number</label>
+      <div class="phone-wrap"><span class="plus">+</span><input id="phone" inputmode="tel" autocomplete="tel" value="917050407246" placeholder="917050407246" maxlength="15" aria-describedby="phoneHint"></div>
+      <div id="phoneHint" class="hint">Use country code + number. Example: <b>917050407246</b>. Spaces, + and dashes are removed automatically.</div>
+      <button id="pair" class="primary"><span>GENERATE PAIR CODE</span><i>↗</i></button>
+
+      <div class="code-card"><div class="code-label">PAIR CODE</div><div id="codeBox" class="code-box">— — — — — —</div><button id="copy" class="copy" disabled>Copy Code</button></div>
+
+      <div id="status" class="status">System ready. Enter a number and generate a code.</div>
+
+      <div class="actions"><button id="download" class="secondary" disabled>Download creds.json</button><button id="reset" class="danger">Reset Session</button></div>
+    </section>
+
+    <section class="guide">
+      <div class="guide-title">HOW TO LINK</div>
+      <div class="steps">
+        <div><b>01</b><span>Enter your WhatsApp number with country code.</span></div>
+        <div><b>02</b><span>Tap <strong>Generate Pair Code</strong>.</span></div>
+        <div><b>03</b><span>WhatsApp → Linked devices → Link with phone number.</span></div>
+        <div><b>04</b><span>Enter the code shown above. After linking, <code>auth_info/creds.json</code> is saved on the server.</span></div>
+      </div>
+      <div class="security"><span>⚠</span><p><strong>KEEP SESSION PRIVATE.</strong> <code>creds.json</code> is a login/session credential. Never upload or share it publicly.</p></div>
+    </section>
+    <footer>© 2026 Danish Khan • WA Core Pairing Center</footer>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
