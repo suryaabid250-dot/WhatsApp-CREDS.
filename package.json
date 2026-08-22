@@ -1,8 +1,8 @@
 {
-  "name": "danish-khan-whatsapp-paircode",
-  "version": "2.0.0",
+  "name": "danish-khan-paircode-render",
+  "version": "1.0.0",
   "private": true,
-  "description": "Danish Khan WhatsApp Pair Code Generator",
+  "description": "Render-ready WhatsApp pairing-code web app",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -11,7 +11,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "6.7.24",
+    "@whiskeysockets/baileys": "6.7.18",
     "express": "4.21.2",
     "pino": "9.6.0"
   }
