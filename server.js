@@ -1,183 +1,188 @@
-import express from "express";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import makeWASocket, { DisconnectReason, useMultiFileAuthState, Browsers } from "@whiskeysockets/baileys";
-import P from "pino";
+const express = require("express");
+const path = require("path");
+const fs = require("fs");
+const pino = require("pino");
+const {
+  default: makeWASocket,
+  useMultiFileAuthState,
+  DisconnectReason,
+  Browsers
+} = require("@whiskeysockets/baileys");
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 const app = express();
-const PORT = Number(process.env.PORT || 3000);
-const AUTH_DIR = path.join(__dirname, "auth_info");
-const DEFAULT_PHONE = "917050407246";
+const PORT = process.env.PORT || 3000;
+const PUBLIC = path.join(__dirname, "public");
+const AUTH_ROOT = path.join(__dirname, "auth_info");
+const logger = pino({ level: "silent" });
 
-app.use(express.json({ limit: "50kb" }));
-app.use(express.static(path.join(__dirname, "public")));
+fs.mkdirSync(AUTH_ROOT, { recursive: true });
 
-let sock = null;
-let authState = null;
-let saveCreds = null;
-let starting = null;
-let pairingInProgress = false;
+app.use(express.json());
+app.use(express.static(PUBLIC));
 
-let state = {
-  status: "idle",
-  pairingCode: null,
-  phone: DEFAULT_PHONE,
-  message: "Ready"
-};
+const sessions = new Map();
 
-const logger = P({ level: process.env.LOG_LEVEL || "silent" });
-
-function setStatus(status, message) {
-  state.status = status;
-  state.message = message;
-}
-
-function cleanPhone(value) {
+function cleanNumber(value) {
   return String(value || "").replace(/\D/g, "");
 }
 
-async function startSocket() {
-  if (starting) return starting;
+function validNumber(number) {
+  return /^\d{7,15}$/.test(number);
+}
 
-  starting = (async () => {
-    const auth = await useMultiFileAuthState(AUTH_DIR);
-    authState = auth.state;
-    saveCreds = auth.saveCreds;
+function authDir(number) {
+  return path.join(AUTH_ROOT, number);
+}
 
-    const newSock = makeWASocket({
-      auth: authState,
-      browser: Browsers.ubuntu("Danish Khan WhatsApp Linker"),
-      printQRInTerminal: false,
-      logger,
-      connectTimeoutMs: 60_000,
-      defaultQueryTimeoutMs: 60_000,
-      markOnlineOnConnect: false
-    });
+async function createSocket(number) {
+  const dir = authDir(number);
+  fs.mkdirSync(dir, { recursive: true });
 
-    sock = newSock;
-    sock.ev.on("creds.update", saveCreds);
+  const { state, saveCreds } = await useMultiFileAuthState(dir);
 
-    sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
-      if (connection === "open") {
-        setStatus("connected", "WhatsApp linked successfully");
-        state.pairingCode = null;
-        pairingInProgress = false;
-      }
-
-      if (connection === "close") {
-        const code = lastDisconnect?.error?.output?.statusCode;
-        sock = null;
-
-        if (code === DisconnectReason.loggedOut) {
-          pairingInProgress = false;
-          setStatus("logged_out", "Logged out. Reset the session and pair again.");
-        } else if (code === DisconnectReason.restartRequired) {
-          setStatus("reconnecting", "WhatsApp requested a restart. Reconnecting...");
-          try {
-            await startSocket();
-          } catch (err) {
-            setStatus("error", err?.message || "Reconnect failed");
-          }
-        } else {
-          pairingInProgress = false;
-          setStatus("disconnected", `Connection closed (${code ?? "unknown"}).`);
-        }
-      }
-    });
-
-    return newSock;
-  })();
-
-  try {
-    return await starting;
-  } finally {
-    starting = null;
+  if (state.creds.registered) {
+    return { state, sock: null, saveCreds };
   }
-}
 
-async function ensureSocket() {
-  if (sock) return sock;
-  return startSocket();
-}
-
-app.get("/api/status", (_req, res) => {
-  res.json({
-    ...state,
-    credsExists: fs.existsSync(path.join(AUTH_DIR, "creds.json")),
-    authDirExists: fs.existsSync(AUTH_DIR),
-    registered: Boolean(authState?.creds?.registered)
+  const sock = makeWASocket({
+    auth: state,
+    logger,
+    browser: Browsers.ubuntu("Danish Khan WA Core"),
+    printQRInTerminal: false,
+    markOnlineOnConnect: false,
+    syncFullHistory: false,
+    connectTimeoutMs: 60000
   });
+
+  sock.ev.on("creds.update", saveCreds);
+
+  sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
+    const current = sessions.get(number);
+
+    if (connection === "open") {
+      if (current) current.status = "connected";
+    }
+
+    if (connection === "close") {
+      const code = lastDisconnect?.error?.output?.statusCode;
+      if (current) {
+        current.status =
+          code === DisconnectReason.loggedOut ? "logged_out" : "closed";
+      }
+      sessions.delete(number);
+    }
+  });
+
+  sessions.set(number, { sock, status: "connecting" });
+  return { state, sock, saveCreds };
+}
+
+app.get("/health", (req, res) => {
+  res.json({ ok: true, service: "Danish Khan WhatsApp Pair Code" });
 });
 
 app.post("/api/pair", async (req, res) => {
   try {
-    if (pairingInProgress) {
-      return res.status(409).json({ ok: false, error: "A pairing request is already in progress. Please wait." });
-    }
+    const number = cleanNumber(req.body?.number);
 
-    let phone = cleanPhone(req.body?.phone || DEFAULT_PHONE);
-    if (phone.startsWith("00")) phone = phone.slice(2);
-    if (!/^\d{7,15}$/.test(phone)) {
-      return res.status(400).json({ ok: false, error: "Enter a valid international WhatsApp number (7–15 digits, country code included)." });
-    }
-
-    const currentSock = await ensureSocket();
-
-    if (authState?.creds?.registered) {
-      return res.status(409).json({
+    if (!validNumber(number)) {
+      return res.status(400).json({
         ok: false,
-        error: "This auth_info folder is already linked. Reset the session before pairing another number."
+        error: "Number must contain 7-15 digits including country code."
       });
     }
 
-    pairingInProgress = true;
-    state.phone = phone;
-    setStatus("pairing", "Preparing WhatsApp pairing code...");
+    const { state, sock } = await createSocket(number);
 
-    // WhatsApp needs the socket to initialize before requesting a pairing code.
-    await new Promise(resolve => setTimeout(resolve, 1800));
-
-    const code = await currentSock.requestPairingCode(phone);
-    state.pairingCode = code;
-    setStatus("waiting", "Enter this code in WhatsApp → Linked devices → Link with phone number");
-
-    res.json({ ok: true, code, status: state });
-  } catch (err) {
-    pairingInProgress = false;
-    console.error(err);
-    setStatus("error", err?.message || "Pairing failed");
-    res.status(500).json({ ok: false, error: err?.message || "Pairing failed" });
-  }
-});
-
-app.get("/api/creds", (_req, res) => {
-  const credsPath = path.join(AUTH_DIR, "creds.json");
-  if (!fs.existsSync(credsPath)) {
-    return res.status(404).json({ ok: false, error: "creds.json is not available yet. Pair the WhatsApp account first." });
-  }
-  res.download(credsPath, "creds.json");
-});
-
-app.post("/api/reset", async (_req, res) => {
-  try {
-    if (sock) {
-      try { sock.end(undefined); } catch {}
-      sock = null;
+    if (state.creds.registered) {
+      return res.json({
+        ok: true,
+        status: "already_linked",
+        message: "A saved WhatsApp session already exists for this number."
+      });
     }
-    fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-    authState = null;
-    saveCreds = null;
-    pairingInProgress = false;
-    state = { status: "idle", pairingCode: null, phone: DEFAULT_PHONE, message: "Session deleted. Ready for a new pairing." };
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err?.message || "Reset failed" });
+
+    const code = await sock.requestPairingCode(number);
+
+    res.json({
+      ok: true,
+      status: "pairing",
+      number,
+      code
+    });
+  } catch (error) {
+    console.error("PAIR ERROR:", error);
+    res.status(500).json({
+      ok: false,
+      error: "Could not generate pairing code. Check Render logs."
+    });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Danish Khan WhatsApp Linker: http://localhost:${PORT}`);
+app.get("/api/status", (req, res) => {
+  const number = cleanNumber(req.query.number);
+
+  if (!validNumber(number)) {
+    return res.status(400).json({ ok: false, error: "Invalid number." });
+  }
+
+  const creds = path.join(authDir(number), "creds.json");
+  let registered = false;
+
+  if (fs.existsSync(creds)) {
+    try {
+      registered = !!JSON.parse(fs.readFileSync(creds, "utf8")).registered;
+    } catch {}
+  }
+
+  const current = sessions.get(number);
+
+  res.json({
+    ok: true,
+    status: registered ? "connected" : (current?.status || "idle"),
+    credsSaved: fs.existsSync(creds)
+  });
+});
+
+app.get("/api/download-creds", (req, res) => {
+  const number = cleanNumber(req.query.number);
+
+  if (!validNumber(number)) return res.status(400).send("Invalid number.");
+
+  const file = path.join(authDir(number), "creds.json");
+
+  if (!fs.existsSync(file)) {
+    return res.status(404).send("creds.json has not been generated yet.");
+  }
+
+  res.download(file, "creds.json");
+});
+
+app.post("/api/reset", (req, res) => {
+  const number = cleanNumber(req.body?.number);
+
+  if (!validNumber(number)) {
+    return res.status(400).json({ ok: false, error: "Invalid number." });
+  }
+
+  const current = sessions.get(number);
+  try { current?.sock?.end?.(); } catch {}
+
+  sessions.delete(number);
+
+  const dir = authDir(number);
+  if (fs.existsSync(dir)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  res.json({ ok: true });
+});
+
+// IMPORTANT: this must be after /api routes and static files.
+app.get("*", (req, res) => {
+  res.sendFile(path.join(PUBLIC, "index.html"));
+});
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`DANISH KHAN WA CORE running on port ${PORT}`);
 });
