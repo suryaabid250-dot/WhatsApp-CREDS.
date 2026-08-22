@@ -1,0 +1,14 @@
+{
+  "name": "danish-khan-whatsapp-linker",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Danish Khan WhatsApp pairing-code web app using Baileys.",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@whiskeysockets/baileys": "latest",
+    "express": "^5.1.0",
+    "pino": "^10.1.0"
+  }
+}
