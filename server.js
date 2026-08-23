@@ -65,7 +65,8 @@ async function createSocket(number, existingSession) {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, log)
     },
-    browser: Browsers.macOS('Chrome'),
+    // Windows/Chrome is currently accepted by WhatsApp's pairing-code validation.
+    browser: Browsers.windows('Chrome'),
     logger: log,
     printQRInTerminal: false,
     markOnlineOnConnect: false,
