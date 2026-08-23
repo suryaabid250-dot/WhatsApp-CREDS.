@@ -1,205 +1,36 @@
-const express = require("express");
-const fs = require("fs");
-const path = require("path");
-const pino = require("pino");
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  fetchLatestBaileysVersion,
-  makeCacheableSignalKeyStore,
-  Browsers,
-  DisconnectReason
-} = require("@whiskeysockets/baileys");
-
-const app = express();
-const PORT = Number(process.env.PORT || 10000);
-const ROOT = path.join(__dirname, "sessions");
-const logger = pino({ level: "fatal" });
-const clients = new Map();
-
-fs.mkdirSync(ROOT, { recursive: true });
-app.use(express.json({limit:"32kb"}));
-
-const html = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Danish Khan • WhatsApp PairCode</title>
-<style>
-*{box-sizing:border-box}body{margin:0;min-height:100vh;background:#05060a;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
-body:before{content:"";position:fixed;inset:-30%;z-index:-1;background:radial-gradient(circle at 15% 20%,#5b21b6,transparent 27%),radial-gradient(circle at 85% 20%,#075985,transparent 27%),radial-gradient(circle at 70% 85%,#047857,transparent 27%);filter:blur(55px)}
-.wrap{width:min(700px,92%);margin:45px auto}.head{text-align:center}.tag{display:inline-block;padding:8px 14px;border:1px solid #343b4c;border-radius:99px;background:#0c1018;color:#c5ccdc;font-size:11px;font-weight:900;letter-spacing:.15em}
-h1{font-size:clamp(38px,9vw,62px);line-height:1;margin:18px 0 7px;letter-spacing:-.055em}.sub{color:#929daf}
-.card{margin-top:28px;padding:26px;border:1px solid #2a3241;border-radius:28px;background:#0b0e15f2;box-shadow:0 35px 100px #000b}
-label{display:block;font-weight:900;margin-bottom:9px}input{width:100%;padding:17px;border-radius:15px;border:1px solid #364052;background:#07090e;color:#fff;font-size:18px;outline:0}.hint{font-size:12px;color:#7e899c;margin:8px 0 18px}
-button{width:100%;padding:16px;border-radius:15px;border:1px solid #30394a;background:#171b24;color:#fff;font-weight:900;font-size:15px;cursor:pointer}.primary{border:0;background:linear-gradient(135deg,#7047ff,#a16cff)}
-.code{margin-top:20px;text-align:center;padding:22px;border:1px dashed #465165;border-radius:18px;background:#070a10}.code small{color:#8994a8}.code b{display:block;margin-top:9px;font-size:34px;letter-spacing:.17em}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.status{margin-top:16px;padding:14px;border-radius:14px;background:#070a10;color:#b0bacb;font-size:14px}.ok{color:#00e3a0}.bad{color:#ff6d87}.note{margin-top:16px;color:#68758b;font-size:12px;line-height:1.6}
-@media(max-width:520px){.card{padding:20px}.grid{grid-template-columns:1fr}.code b{font-size:27px}}
-</style></head>
-<body><div class="wrap"><div class="head"><span class="tag">DANISH KHAN • WA LINKER</span><h1>WhatsApp PairCode</h1><div class="sub">Pair your own WhatsApp account</div></div>
-<div class="card">
-<label>WhatsApp number</label><input id="num" inputmode="numeric" autocomplete="tel" value="917050407246">
-<div class="hint">Country code included. Digits only — no +, spaces or dashes.</div>
-<button class="primary" id="gen">Generate Pair Code</button>
-<div class="code" id="codebox" hidden><small>PAIR CODE</small><b id="code">--------</b></div>
-<div class="grid"><button id="copy">Copy Code</button><button id="check">Check Login</button></div>
-<div class="grid"><button id="download">Download creds.json</button><button id="reset">New Session</button></div>
-<div class="status" id="status">Ready.</div>
-<div class="note">After entering the code in WhatsApp, wait until the status changes to LOGIN SUCCESS. Do not refresh during pairing.</div>
-</div></div>
-<script>
-const $=x=>document.getElementById(x);let code="",timer=null;
-function n(){return $("num").value.replace(/\\D/g,"")}
-function show(t,c=""){$("status").className="status "+c;$("status").textContent=t}
-function watch(number){
- clearInterval(timer);
- timer=setInterval(async()=>{
-  try{
-   const d=await (await fetch("/api/status?number="+encodeURIComponent(number))).json();
-   if(d.status==="connected"){clearInterval(timer);show("LOGIN SUCCESS — WhatsApp device linked.","ok")}
-   else if(d.status==="failed"||d.status==="logged_out"){clearInterval(timer);show(d.error||"WhatsApp connection closed.","bad")}
-  }catch{}
- },2000)
+const express=require("express"),fs=require("fs"),path=require("path"),QRCode=require("qrcode"),pino=require("pino");
+const {default:makeWASocket,useMultiFileAuthState,makeCacheableSignalKeyStore,fetchLatestBaileysVersion,Browsers,DisconnectReason,delay}=require("@whiskeysockets/baileys");
+const app=express(),PORT=+process.env.PORT||10000,ROOT=path.join(__dirname,"sessions"),log=pino({level:"fatal"}),jobs=new Map();
+fs.mkdirSync(ROOT,{recursive:true});app.use(express.json({limit:"32kb"}));
+const d=v=>String(v||"").replace(/\D/g,""),ok=v=>/^\d{7,15}$/.test(v),dir=n=>path.join(ROOT,n),creds=n=>path.join(dir(n),"creds.json");
+const html=`<!doctype html><meta name=viewport content="width=device-width,initial-scale=1"><title>Danish Khan WA Login</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;background:#05060a;color:white;font-family:system-ui;text-align:center}main{width:min(650px,92%);margin:45px auto}.tag{display:inline-block;padding:8px 14px;border:1px solid #394052;border-radius:99px;color:#cbd3e2;font-size:11px;font-weight:900;letter-spacing:.15em}h1{font-size:clamp(38px,9vw,60px);line-height:1;margin:18px 0}.sub{color:#929daf}.card{margin-top:25px;padding:24px;border:1px solid #2b3342;border-radius:26px;background:#0b0e15}.tabs,.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.tabs{margin-bottom:18px}button,input{width:100%;padding:16px;border-radius:14px;border:1px solid #354052;background:#151922;color:white;font-size:15px;font-weight:800}input{text-align:left;font-size:18px}.active,.primary{background:linear-gradient(135deg,#7047ff,#a16cff);border:0}.box{margin-top:18px;padding:18px;border:1px dashed #465165;border-radius:16px}.code{font-size:32px;letter-spacing:.16em;font-weight:900;margin:8px}.qr{width:min(270px,85%);background:white;padding:8px;border-radius:10px;margin:10px}.status{margin-top:15px;padding:13px;background:#070a10;border-radius:12px;color:#b5bfd0}.good{color:#00e3a0}.bad{color:#ff6d87}.note{font-size:12px;color:#718097;margin-top:15px;line-height:1.5}@media(max-width:500px){.grid{grid-template-columns:1fr}.card{padding:18px}}</style>
+<main><span class=tag>DANISH KHAN • WA LOGIN</span><h1>WhatsApp Login</h1><div class=sub>QR + Pair Code</div><section class=card>
+<div class=tabs><button id=qt class=active>QR Login</button><button id=pt>Pair Code</button></div>
+<div id=qv><button id=qrgo class=primary>Generate QR</button><div id=qb class=box hidden><b>SCAN WITH WHATSAPP</b><img id=qr class=qr></div></div>
+<div id=pv hidden><input id=num inputmode=numeric value=917050407246><br><br><button id=pc class=primary>Generate Pair Code</button><div id=pb class=box hidden><small>PAIR CODE</small><div id=code class=code></div></div></div>
+<div class=grid><button id=check>Check Login</button><button id=reset>New Session</button></div><button id=down style="margin-top:10px">Download creds.json</button><div id=st class=status>Ready.</div><div class=note>QR is recommended if WhatsApp rejects pairing-code login. Use only your own account.</div>
+</section></main><script>
+let number="",timer;const $=x=>document.getElementById(x),say=(t,c="")=>{$("st").className="status "+c;$("st").textContent=t},poll=()=>{clearInterval(timer);timer=setInterval(async()=>{if(!number)return;try{let x=await(await fetch("/api/status?number="+encodeURIComponent(number))).json();if(x.status==="connected"){clearInterval(timer);say("LOGIN SUCCESS — WhatsApp linked.","good")}else if(x.status==="failed"||x.status==="logged_out"){clearInterval(timer);say(x.error||"Connection closed","bad")}}catch{}},2000)};
+$("qt").onclick=()=>{$("qv").hidden=false;$("pv").hidden=true;$("qt").className="active";$("pt").className=""};$("pt").onclick=()=>{$("qv").hidden=true;$("pv").hidden=false;$("pt").className="active";$("qt").className=""};
+$("qrgo").onclick=async()=>{say("Starting QR login…");try{let x=await(await fetch("/api/qr",{method:"POST"})).json();if(!x.ok)throw Error(x.error);number=x.number;$("qr").src=x.qr;$("qb").hidden=false;say("WhatsApp → Linked devices → Link a device → Scan QR.","good");poll()}catch(e){say(e.message,"bad")}};
+$("pc").onclick=async()=>{number=$("num").value.replace(/\\D/g,"");if(!/^\\d{7,15}$/.test(number))return say("Invalid number","bad");say("Generating pair code…");try{let x=await(await fetch("/api/pair",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({number})})).json();if(!x.ok)throw Error(x.error);$("code").textContent=x.code;$("pb").hidden=false;say("Enter code in WhatsApp → Linked devices → Link with phone number.","good");poll()}catch(e){say(e.message,"bad")}};
+$("check").onclick=async()=>{if(!number)return say("Start login first");let x=await(await fetch("/api/status?number="+encodeURIComponent(number))).json();say("Status: "+x.status+(x.credsSaved?" • creds.json saved":""))};
+$("reset").onclick=async()=>{if(number)await fetch("/api/reset",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({number})});clearInterval(timer);$("qb").hidden=true;$("pb").hidden=true;say("Fresh session ready.","good")};
+$("down").onclick=()=>number&&(location.href="/api/download?number="+encodeURIComponent(number));
+</script>`;
+async function socket(number){
+ let old=jobs.get(number);try{old?.sock?.end?.()}catch{}jobs.delete(number);
+ let x=dir(number);if(fs.existsSync(x))fs.rmSync(x,{recursive:true,force:true});fs.mkdirSync(x,{recursive:true});
+ let {state,saveCreds}=await useMultiFileAuthState(x),{version}=await fetchLatestBaileysVersion();
+ let sock=makeWASocket({version,auth:{creds:state.creds,keys:makeCacheableSignalKeyStore(state.keys,log)},logger:log,browser:Browsers.ubuntu("Chrome"),markOnlineOnConnect:true,printQRInTerminal:false,syncFullHistory:false,connectTimeoutMs:60000,keepAliveIntervalMs:10000});
+ let j={sock,status:"connecting",error:null,qr:null};jobs.set(number,j);sock.ev.on("creds.update",saveCreds);
+ sock.ev.on("connection.update",async u=>{if(u.qr)try{j.qr=await QRCode.toDataURL(u.qr)}catch{}if(u.connection==="open"){j.status="connected";j.error=null}if(u.connection==="close"){let c=u.lastDisconnect?.error?.output?.statusCode;j.status=c===DisconnectReason.loggedOut?"logged_out":"failed";j.error=c?`WhatsApp connection closed (${c})`:"WhatsApp connection closed"}});
+ return {sock,j};
 }
-$("gen").onclick=async()=>{
- const number=n();
- if(!/^\\d{7,15}$/.test(number))return show("Enter 7–15 digits including country code.","bad");
- $("gen").disabled=true;show("Starting WhatsApp pairing…");
- try{
-  const r=await fetch("/api/pair",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({number})});
-  const d=await r.json();
-  if(!r.ok||!d.ok)throw new Error(d.error||"Pairing failed");
-  code=d.code;$("code").textContent=code;$("codebox").hidden=false;
-  show("Enter the code in WhatsApp → Linked devices → Link with phone number.","ok");
-  watch(number);
- }catch(e){show(e.message,"bad")}finally{$("gen").disabled=false}
-};
-$("copy").onclick=async()=>{if(!code)return show("Generate a code first.");await navigator.clipboard.writeText(code);show("Pair code copied.","ok")};
-$("check").onclick=async()=>{try{const d=await(await fetch("/api/status?number="+encodeURIComponent(n()))).json();show("Status: "+d.status+(d.credsSaved?" • creds.json saved":""))}catch{show("Status check failed.","bad")}};
-$("download").onclick=()=>location.href="/api/download?number="+encodeURIComponent(n());
-$("reset").onclick=async()=>{await fetch("/api/reset",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({number:n()})});clearInterval(timer);$("codebox").hidden=true;code="";show("Fresh session ready.","ok")};
-</script></body></html>`;
-
-function digits(v){return String(v||"").replace(/\D/g,"")}
-function valid(v){return /^\d{7,15}$/.test(v)}
-function dir(n){return path.join(ROOT,n)}
-function creds(n){return path.join(dir(n),"creds.json")}
-
-async function startPairing(number){
-  const old=clients.get(number);
-  try{old?.sock?.end?.()}catch{}
-  clients.delete(number);
-
-  const d=dir(number);
-  if(fs.existsSync(d)) fs.rmSync(d,{recursive:true,force:true});
-  fs.mkdirSync(d,{recursive:true});
-
-  const {state,saveCreds}=await useMultiFileAuthState(d);
-  const {version,isLatest}=await fetchLatestBaileysVersion();
-  console.log("Baileys WA Web version:",version.join("."),"latest:",isLatest);
-
-  const sock=makeWASocket({
-    version,
-    logger,
-    printQRInTerminal:false,
-    auth:{
-      creds:state.creds,
-      keys:makeCacheableSignalKeyStore(state.keys,logger)
-    },
-    browser:Browsers.ubuntu("Chrome"),
-    markOnlineOnConnect:true,
-    syncFullHistory:false,
-    connectTimeoutMs:60000,
-    keepAliveIntervalMs:10000,
-    defaultQueryTimeoutMs:60000,
-    generateHighQualityLinkPreview:false
-  });
-
-  const job={sock,status:"connecting",error:null,code:null};
-  clients.set(number,job);
-
-  // This listener MUST stay attached for the entire socket lifetime.
-  sock.ev.on("creds.update",saveCreds);
-
-  sock.ev.on("connection.update",(update)=>{
-    const {connection,lastDisconnect}=update;
-
-    if(connection==="open"){
-      job.status="connected";
-      job.error=null;
-      console.log("LOGIN SUCCESS",number);
-    }
-
-    if(connection==="close"){
-      const code=lastDisconnect?.error?.output?.statusCode;
-      if(code===DisconnectReason.loggedOut){
-        job.status="logged_out";
-        job.error="WhatsApp logged out this session.";
-      }else{
-        job.status="failed";
-        job.error=code ? `WhatsApp connection closed (${code}).` : "WhatsApp connection closed.";
-      }
-      console.log("CONNECTION CLOSED",number,job.error);
-    }
-  });
-
-  // Match the supplied working source's pairing timing.
-  await new Promise(resolve=>setTimeout(resolve,3000));
-  const pairCode=await sock.requestPairingCode(number);
-  job.code=pairCode;
-
-  return pairCode;
-}
-
-app.get("/",(req,res)=>res.type("html").send(html));
-app.get("/health",(req,res)=>res.json({ok:true,service:"danish-khan-wa-paircode-fixed"}));
-
-app.post("/api/pair",async(req,res)=>{
-  const number=digits(req.body?.number);
-  if(!valid(number))return res.status(400).json({ok:false,error:"Invalid number. Use country code and digits only."});
-  try{
-    const code=await startPairing(number);
-    res.json({ok:true,code});
-  }catch(e){
-    console.error("PAIR ERROR",e);
-    res.status(500).json({ok:false,error:"Pairing could not start. Check Render logs for the exact WhatsApp error."});
-  }
-});
-
-app.get("/api/status",(req,res)=>{
-  const number=digits(req.query.number);
-  if(!valid(number))return res.status(400).json({ok:false,error:"Invalid number"});
-  let registered=false;
-  const f=creds(number);
-  if(fs.existsSync(f)){
-    try{registered=!!JSON.parse(fs.readFileSync(f,"utf8")).registered}catch{}
-  }
-  const j=clients.get(number);
-  res.json({
-    ok:true,
-    status:registered?"connected":(j?.status||"idle"),
-    error:j?.error||null,
-    credsSaved:fs.existsSync(f)
-  });
-});
-
-app.get("/api/download",(req,res)=>{
-  const number=digits(req.query.number);
-  if(!valid(number))return res.status(400).send("Invalid number");
-  const f=creds(number);
-  if(!fs.existsSync(f))return res.status(404).send("creds.json is not ready. Complete WhatsApp linking first.");
-  res.download(f,"creds.json");
-});
-
-app.post("/api/reset",(req,res)=>{
-  const number=digits(req.body?.number);
-  if(!valid(number))return res.status(400).json({ok:false,error:"Invalid number"});
-  try{clients.get(number)?.sock?.end?.()}catch{}
-  clients.delete(number);
-  const d=dir(number);
-  if(fs.existsSync(d))fs.rmSync(d,{recursive:true,force:true});
-  res.json({ok:true});
-});
-
-app.listen(PORT,"0.0.0.0",()=>console.log("DANISH KHAN WA PAIRCODE FIXED running on port "+PORT));
+app.get("/",(q,r)=>r.type("html").send(html));app.get("/health",(q,r)=>r.json({ok:true}));
+app.post("/api/qr",async(q,r)=>{let n="qr-"+Date.now();try{let {j}=await socket(n);for(let i=0;i<40&&!j.qr;i++)await delay(250);if(!j.qr)throw Error("QR not received; check Render logs");r.json({ok:true,number:n,qr:j.qr})}catch(e){r.status(500).json({ok:false,error:e.message})}});
+app.post("/api/pair",async(q,r)=>{let n=d(q.body?.number);if(!ok(n))return r.status(400).json({ok:false,error:"Invalid number"});try{let {sock}=await socket(n),code=await sock.requestPairingCode(n);r.json({ok:true,code})}catch(e){r.status(500).json({ok:false,error:e.message})}});
+app.get("/api/status",(q,r)=>{let n=d(q.query.number),j=jobs.get(n),saved=ok(n)&&fs.existsSync(creds(n));r.json({ok:true,status:saved?"connected":j?.status||"idle",error:j?.error||null,credsSaved:saved})});
+app.get("/api/download",(q,r)=>{let n=d(q.query.number),f=creds(n);if(!ok(n)||!fs.existsSync(f))return r.status(404).send("creds.json not ready");r.download(f,"creds.json")});
+app.post("/api/reset",(q,r)=>{let n=d(q.body?.number);try{jobs.get(n)?.sock?.end?.()}catch{}jobs.delete(n);if(ok(n)&&fs.existsSync(dir(n)))fs.rmSync(dir(n),{recursive:true,force:true});r.json({ok:true})});
+app.listen(PORT,"0.0.0.0",()=>console.log("Danish Khan WA Login on "+PORT));
